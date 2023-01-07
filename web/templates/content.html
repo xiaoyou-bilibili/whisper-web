@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>在线翻译</title>
+    <link rel="stylesheet" type="text/css" href="https://www.layuicdn.com/layui/css/layui.css" />
+    <script src="https://www.layuicdn.com/layui/layui.js"></script>
+    <script src="https://cdn.bootcdn.net/ajax/libs/layer/3.5.1/layer.js"></script>
+    <!--    引入jQuery-->
+    <script src="https://cdn.bootcdn.net/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
+    <style>
+        .field-left{
+            width: 80%;
+        }
+        .field-right{
+            width: 20%;
+        }
+        .layui-field-box img{
+            max-width: 100%;
+        }
+        .layui-table tbody tr {
+            height: 50px;
+        }
+        .layui-table-cell{
+            height: auto;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+<div style="display: flex;align-content: center;justify-content: center">
+    <div class="layui-tab" style="width: 80%">
+          <ul class="layui-tab-title">
+            <li class="layui-this">音频翻译</li>
+            <li>视频字幕生成</li>
+          </ul>
+          <div class="layui-tab-content">
+            <div class="layui-tab-item layui-show">
+                <form class="layui-form" action="">
+                    <div class="layui-form-item">
+                        <label class="layui-form-label">原始音频</label>
+                        <input type="file"  id="origin_audio" name="origin_audio" value=""/>
+                    </div>
+                    <div class="layui-form-item">
+                        <div class="layui-input-block">
+                          <button class="layui-btn" lay-submit lay-filter="translate">立即识别</button>
+                          <button type="reset" class="layui-btn layui-btn-primary">重置</button>
+                        </div>
+                    </div>
+                </form>
+                <div style="display: flex;margin-top: 30px">
+                    <fieldset class="layui-elem-field field-right">
+                        <legend>原始音频</legend>
+                        <video id="origin_audio_info" style="height: 50px;width: 300px;margin: 20px" controls="" name="media"><source src="" type="audio/x-wav"></video>
+                    </fieldset>
+                    <fieldset class="layui-elem-field field-right">
+                        <legend>识别结果</legend>
+                        <table id="detect_res" lay-filter="test"></table>
+                    </fieldset>
+                </div>
+            </div>
+            <div class="layui-tab-item">
+            <form class="layui-form" action="">
+                    <div class="layui-form-item">
+                        <label class="layui-form-label">视频文件</label>
+                        <input type="file"  id="origin_video" name="origin_audio_clone" value=""/>
+                    </div>
+                    <div class="layui-form-item">
+                        <div class="layui-input-block">
+                          <button class="layui-btn" lay-submit lay-filter="video">立即生成</button>
+                          <button type="reset" class="layui-btn layui-btn-primary">重置</button>
+                        </div>
+                    </div>
+            </form>
+            <div style="display: flex;margin-top: 30px">
+
+            </div>
+            </div>
+          </div>
+    </div>
+</div>
+<script>
+// 选项卡依赖element模块
+layui.use('element', function(){});
+// 弹窗函数
+let index = null
+function load() {
+    index = layer.load(1, {shade: [0.6, '#000000']})
+}
+function close() {
+    layer.close(index)
+}
+let table = null
+layui.use('table', function() {
+    table = layui.table
+})
+// 语音合成
+layui.use('form', function(){
+  var form = layui.form;
+  //监听提交
+  form.on('submit(translate)', (origin) => {
+      let data = {"audio": ""}
+      let fileReader = new FileReader()
+      fileReader.onload = function () {
+          data.audio = this.result
+          load()
+          $.post("/whisper/trans", data, (data, _)=>{
+            layer.msg('合成成功！', {icon: 6})
+            console.log(data)
+            document.getElementById("origin_audio_info").src = data.origin + "?t=" + Math.random()
+            // 表格渲染数据
+            table.render({elem: '#detect_res',width: 900,data: data.translate.segments,cols: [[
+                {field: 'start', title: '开始时间', width: 100},
+                {field: 'end', title: '结束时间', width: 100},
+                {field: 'text', title: '文本', width: 700},
+                ]]})
+            close()
+          })
+      }
+      fileReader.readAsDataURL(document.getElementById("origin_audio").files[0]) // 读第一个文件的内容
+      return false;
+  });
+    //监听提交
+  form.on('submit(video)', (origin) => {
+      console.log("克隆")
+      console.log(document.getElementById("origin_video").files[0])
+      const data = new FormData();
+      data.set('video', document.getElementById("origin_video").files[0]);
+      $.ajax({
+            type: 'POST',
+            url: "/whisper/video",
+            data: data,
+            cache: false,
+            processData: false,
+            contentType: false,
+            success: function (data) {
+                // 使用定时器定时获取进度
+                let timer = setInterval(()=>{
+                    $.get("/whisper/process", (data) => {
+                        if(data.process === 'finish') {
+                            clearInterval(timer)
+                            let link = document.createElement('a')
+                            link.download = `detect.srt`
+                            link.href = 'data:text/plain,' + data.res
+                            link.click()
+                        } else {
+                            layer.msg(data.process);
+                        }
+                    })
+                }, 1000)
+            }
+      });
+      return false;
+  });
+});
+</script>
+</body>
+</html>
